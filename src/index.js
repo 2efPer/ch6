@@ -1,17 +1,49 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import './index.css';
 import App from './App';
-import reportWebVitals from './reportWebVitals';
+import getConfig from './config.js';
+import * as nearAPI from 'near-api-js';
 
-ReactDOM.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-  document.getElementById('root')
+async function initContract() {
+
+  const nearConfig = getConfig(process.env.NODE_ENV || 'testnet');
+
+  const keyStore = new nearAPI.keyStores.BrowserLocalStorageKeyStore();
+
+  const near = await nearAPI.connect({ keyStore, ...nearConfig });
+
+  const walletConnection = new nearAPI.WalletConnection(near);
+
+  let currentUser;
+  if (walletConnection.getAccountId()) {
+    currentUser = {
+      accountId: walletConnection.getAccountId(),
+      balance: (await walletConnection.account().state()).amount,
+    };
+  }
+  const contract = await new nearAPI.Contract(
+    walletConnection.account(),
+    nearConfig.contractName,
+    {
+      viewMethods: ['get_ranks','ft_balance_of', 'storage_balance_of'],
+      changeMethods: ['get_paid','storage_deposit','ft_transfer'],
+      sender: walletConnection.getAccountId(),
+    }
+  );
+
+  return { contract, currentUser, nearConfig, walletConnection };
+}
+
+window.nearInitPromise = initContract().then(
+  ({ contract, currentUser, nearConfig, walletConnection }) => {
+    ReactDOM.render(
+      <App
+        contract={contract}
+        currentUser={currentUser}
+        nearConfig={nearConfig}
+        wallet={walletConnection}
+      />,
+      document.getElementById('root')
+    );
+  }
 );
-
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals();
